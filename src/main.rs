@@ -3,12 +3,12 @@ use std::{
     env, fs,
     io::{self, Write},
     process::{exit, Stdio},
+    sync::atomic::AtomicBool,
 };
 
-static HAD_ERROR: OnceCell<()> = OnceCell::new();
-
-pub fn had_error() -> bool {
-    HAD_ERROR.get().is_some()
+static HAD_ERROR: AtomicBool = AtomicBool::new(false);
+fn had_error() -> bool {
+    HAD_ERROR.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 fn main() {
@@ -79,7 +79,7 @@ fn error(line: u32, message: &str) {
 
 fn report(line: u32, location: &str, message: &str) {
     eprintln!("[line {line}] Error {location}: {message}");
-    HAD_ERROR.get_or_init(|| ());
+    HAD_ERROR.store(true, std::sync::atomic::Ordering::SeqCst)
 }
 
 #[cfg(test)]
