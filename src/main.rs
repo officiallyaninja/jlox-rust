@@ -1,10 +1,12 @@
+mod scanner;
 use std::{
-    cell::OnceCell,
     env, fs,
     io::{self, Write},
-    process::{exit, Stdio},
+    process::exit,
     sync::atomic::AtomicBool,
 };
+
+use crate::scanner::Scanner;
 
 static HAD_ERROR: AtomicBool = AtomicBool::new(false);
 fn had_error() -> bool {
@@ -27,7 +29,7 @@ fn run_prompt() {
     loop {
         let mut line = String::new();
         print!("> ");
-        io::stdout().flush();
+        io::stdout().flush().expect("flush error");
         io::stdin()
             .read_line(&mut line)
             .expect("Error reading input");
@@ -43,29 +45,10 @@ fn run_file(path: &str) {
     }
 }
 
-pub struct Scanner {}
-
-impl Scanner {
-    pub fn new(source: &str) -> Self {
-        unimplemented!()
-    }
-
-    fn scanTokens(&self) -> Vec<Token> {
-        todo!()
-    }
-}
-pub struct Token {}
-
-impl std::fmt::Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
-
 fn run(source: &str) {
     println!("{source}");
-    let scanner: Scanner = Scanner::new(source);
-    let tokens: Vec<Token> = scanner.scanTokens();
+    let mut scanner: Scanner = Scanner::new(source);
+    let tokens: Vec<scanner::Token> = scanner.scan_tokens();
 
     // For now, just print the tokens.
     for token in tokens {
