@@ -10,9 +10,9 @@ A Rust interpreter for the Lox programming language, inspired by the [jlox inter
 ## Features
 - **Script Execution**: Execute Lox scripts from files.
 - **Partial Language Support**: Printing, expression evaluation, variable declaration and assignment implemented
+- **Interactive REPL**: Run Lox interactively through a Read-Eval-Print Loop (REPL).
 ## TODO
 - **Complete Lox Language Support**: Covers all the language features including variables, functions, classes, inheritance, and more.
-- **Interactive REPL**: Run Lox interactively through a Read-Eval-Print Loop (REPL).
 - **Error Handling**: Descriptive error messages to make debugging easier.
 - **Extensible Design**: Code structured for ease of extension and learning.
 
@@ -27,7 +27,7 @@ A Rust interpreter for the Lox programming language, inspired by the [jlox inter
 Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/jlox-rust.git
+git clone https://github.com/officiallyaninja/jlox-rust.git
 cd jlox-rust
 ```
 
@@ -48,14 +48,10 @@ cargo run
 To run a Lox script:
 
 ```bash
-cargo run <command> path/to/your_script.lox
+cargo run [command] path/to/your_script.lox
 ```
 
 ## Usage
-
-### REPL Mode
-NOT YET IMPLEMENTED
-
 ### Running Scripts
 
 Create a file named `example.lox` with the following content:
@@ -82,6 +78,8 @@ Parses first line of file assuming it to be a bare expression and print out AST
 Evaluates first line of file assuming it to be a bare expressiona and prints out the value
 #### Run
 Runs the Lox program
+#### [No command]
+Starts REPL
 ## Project Structure
 
 - `src/`: Source code of the interpreter.
