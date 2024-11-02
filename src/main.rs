@@ -1,69 +1,96 @@
+mod environment;
+mod literal;
+mod parser;
 mod scanner;
-use std::{
-    env, fs,
-    io::{self, Write},
-    process::exit,
-    sync::atomic::AtomicBool,
-};
+use std::env;
+use std::fs;
 
-use crate::scanner::Scanner;
+use environment::Environment;
 
-static HAD_ERROR: AtomicBool = AtomicBool::new(false);
-fn had_error() -> bool {
-    HAD_ERROR.load(std::sync::atomic::Ordering::SeqCst)
+// TODO: use clap
+
+struct Context {
+    errors: Vec<(String, u64)>,
+}
+
+impl Context {
+    fn new() -> Self {
+        Context { errors: vec![] }
+    }
+
+    fn error(&mut self, message: &str, line: u64) {
+        self.errors.push((message.to_string(), line));
+    }
+
+    fn print_errors(&self) {
+        for (message, line) in &self.errors {
+            eprintln!("[line {line}] Error: {}", message);
+        }
+    }
 }
 
 fn main() {
+    let mut context = Context::new();
+    let mut environment = Environment::new();
     let args: Vec<String> = env::args().collect();
-    println!("{args:?}");
-    if args.len() > 2 {
-        panic!("Error: too many arguments");
-    } else if args.len() == 2 {
-        run_file(&args[1]);
-    } else {
-        run_prompt();
+    if args.len() < 3 {
+        eprintln!("Usage: {} <command> <filename>", args[0]);
+        return;
+    }
+
+    let command = &args[1];
+    let filename = &args[2];
+
+    let file_contents = fs::read_to_string(filename).unwrap_or_else(|_| {
+        eprintln!("Failed to read file {}", filename);
+        String::new()
+    });
+    match command.as_str() {
+        "tokenize" => {
+            // You can use print statements as follows for debugging, they'll be visible when running tests.
+
+            let tokens = scanner::tokenize(&file_contents, &mut context);
+            context.print_errors();
+            for token in tokens {
+                println!(
+                    "{} {} {}",
+                    token.token_type(),
+                    token.lexeme(),
+                    token.literal()
+                )
+            }
+        }
+        "parse" => {
+            let tokens = scanner::tokenize(&file_contents, &mut context);
+            context.print_errors();
+            let mut parser = parser::Parser::new(tokens);
+            let parsed = parser.expression();
+            println!("{}", parsed.pretty_string());
+        }
+        "evaluate" => {
+            let tokens = scanner::tokenize(&file_contents, &mut context);
+            context.print_errors();
+            let mut parser = parser::Parser::new(tokens);
+            let parsed = parser.expression();
+            println!("{}", parsed.evaluate(&mut environment))
+        }
+
+        "run" => {
+            let tokens = scanner::tokenize(&file_contents, &mut context);
+            context.print_errors();
+            let mut parser = parser::Parser::new(tokens);
+            let program = parser.parse();
+            for statement in dbg!(program) {
+                statement.execute(&mut environment);
+            }
+        }
+
+        _ => {
+            eprintln!("Unknown command: {}", command);
+            return;
+        }
+    }
+    if !context.errors.is_empty() {
+        std::process::exit(65);
     }
 }
-
-fn run_prompt() {
-    loop {
-        let mut line = String::new();
-        print!("> ");
-        io::stdout().flush().expect("flush error");
-        io::stdin()
-            .read_line(&mut line)
-            .expect("Error reading input");
-        run(&line);
-    }
-}
-
-fn run_file(path: &str) {
-    let contents = fs::read_to_string(path).expect("Error Reading file");
-    run(&contents);
-    if had_error() {
-        exit(65)
-    }
-}
-
-fn run(source: &str) {
-    println!("{source}");
-    let mut scanner: Scanner = Scanner::new(source);
-    let tokens: Vec<scanner::Token> = scanner.scan_tokens();
-
-    // For now, just print the tokens.
-    for token in tokens {
-        println!("{token}");
-    }
-}
-
-fn error(line: u32, message: &str) {
-    report(line, "", message);
-}
-
-fn report(line: u32, location: &str, message: &str) {
-    eprintln!("[line {line}] Error {location}: {message}");
-    HAD_ERROR.store(true, std::sync::atomic::Ordering::SeqCst)
-}
-
-#[cfg(test)]
-mod test {}
