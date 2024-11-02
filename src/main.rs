@@ -4,6 +4,9 @@ mod parser;
 mod scanner;
 use std::env;
 use std::fs;
+use std::io;
+use std::io::Read;
+use std::io::Write;
 
 use environment::Environment;
 
@@ -33,6 +36,28 @@ fn main() {
     let mut context = Context::new();
     let mut environment = Environment::new();
     let args: Vec<String> = env::args().collect();
+
+    // REPL
+    if args.len() == 1 {
+        let mut buffer = String::new();
+        loop {
+            print!(">>>");
+            io::stdout().flush().expect("CONSOLE FLUSH ERROR");
+            std::io::stdin()
+                .read_line(&mut buffer)
+                .expect("If input cant be read we should panic");
+            buffer.push(';');
+            let tokens = scanner::tokenize(&buffer, &mut context);
+            context.print_errors();
+            let mut parser = parser::Parser::new(tokens);
+            let program = parser.parse();
+            for statement in program {
+                statement.execute(&mut environment);
+            }
+            buffer.clear();
+        }
+    }
+
     if args.len() < 3 {
         eprintln!("Usage: {} <command> <filename>", args[0]);
         return;
@@ -80,14 +105,13 @@ fn main() {
             context.print_errors();
             let mut parser = parser::Parser::new(tokens);
             let program = parser.parse();
-            for statement in dbg!(program) {
+            for statement in program {
                 statement.execute(&mut environment);
             }
         }
 
         _ => {
-            eprintln!("Unknown command: {}", command);
-            return;
+            panic!("Unknown command: {}", command);
         }
     }
     if !context.errors.is_empty() {

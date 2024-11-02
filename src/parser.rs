@@ -54,6 +54,10 @@ where
         else {
             self.syntax_error("every statement should end in a semicolon")
         };
+        // Removing extraneous semicolons
+        while let Some(Token::SemiColon) = self.tokens.peek() {
+            self.tokens.next();
+        }
         self.line += 1;
         stmt
     }
