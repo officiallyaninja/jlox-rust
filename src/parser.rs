@@ -22,9 +22,19 @@ where
         panic!("[line {}] Error: {}", self.line, message);
     }
 
-    fn runtime_error(&self, message: &str) -> ! {
-        panic!("[line {}] Error: {}", self.line, message);
+    fn check_semicolon(&mut self) {
+        let Token::SemiColon = self
+            .tokens
+            .next()
+            .expect("every statement should end in a semicolon")
+        else {
+            self.syntax_error("every statement should end in a semicolon")
+        };
     }
+    // fn runtime_error(&self, message: &str) -> ! {
+    //     panic!("[line {}] Error: {}", self.line, message);
+    // }
+
     pub fn new<U: IntoIterator<IntoIter = T>>(tokens: U) -> Self {
         Self {
             tokens: tokens.into_iter().peekable(),
@@ -47,13 +57,10 @@ where
         } else {
             self.non_declaration_statement()
         };
-        let Token::SemiColon = self
-            .tokens
-            .next()
-            .expect("every statement should end in a semicolon")
-        else {
-            self.syntax_error("every statement should end in a semicolon")
-        };
+        match stmt {
+            Stmt::Block(_) => {}
+            Stmt::Expression(_) | Stmt::Print(_) | Stmt::Var(_, _) => self.check_semicolon(),
+        }
         // Removing extraneous semicolons
         while let Some(Token::SemiColon) = self.tokens.peek() {
             self.tokens.next();
@@ -93,10 +100,22 @@ where
     /// we only really allow non declaration statements
     fn non_declaration_statement(&mut self) -> Stmt {
         if let Some(Token::Print) = self.tokens.peek() {
-            self.print_statement()
-        } else {
-            self.expression_statement()
+            return self.print_statement();
         }
+        if let Some(Token::LeftBrace) = self.tokens.peek() {
+            return Stmt::Block(self.block());
+        }
+        self.expression_statement()
+    }
+
+    fn block(&mut self) -> Vec<Stmt> {
+        assert_eq!(self.tokens.next(), Some(Token::LeftBrace));
+        let mut statements = vec![];
+        while self.tokens.peek().is_some() && self.tokens.peek() != Some(&Token::RightBrace) {
+            statements.push(self.statement())
+        }
+        assert_eq!(self.tokens.next(), Some(Token::RightBrace));
+        statements
     }
 
     fn print_statement(&mut self) -> Stmt {
@@ -292,7 +311,6 @@ mod test {
                 Literal::False
             )
         }
-
         #[test]
         fn arithemtic() {
             let expr_text = "(5+2)*-6";
@@ -349,11 +367,12 @@ mod test {
             let mut environment = Environment::new();
 
             let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment);
+                statement.execute(&mut environment, &mut buffer);
             }
 
-            assert_eq!(environment.output, vec!["7"])
+            assert_eq!(buffer, b"7\n");
         }
 
         #[test]
@@ -364,11 +383,12 @@ mod test {
             let mut environment = Environment::new();
 
             let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment);
+                statement.execute(&mut environment, &mut buffer);
             }
 
-            assert_eq!(environment.output, vec!["12"])
+            assert_eq!(buffer, b"12\n")
         }
 
         #[test]
@@ -379,11 +399,12 @@ mod test {
             let mut environment = Environment::new();
 
             let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment);
+                statement.execute(&mut environment, &mut buffer);
             }
 
-            assert_eq!(environment.output, vec!["7"])
+            assert_eq!(buffer, b"7\n")
         }
 
         #[test]
@@ -399,11 +420,70 @@ mod test {
             let mut environment = Environment::new();
 
             let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment);
+                statement.execute(&mut environment, &mut buffer);
             }
 
-            assert_eq!(environment.output, vec!["5", "true", "10"])
+            assert_eq!(buffer, b"5\ntrue\n10\n")
+        }
+    }
+    mod should_not_work {
+
+        use crate::{environment::Environment, parser::test::get_parser};
+
+        #[test]
+        #[should_panic]
+        fn basic() {
+            let code = "
+                var x = 2
+                print x
+                x = x+1
+                ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+        }
+
+        #[test]
+        #[should_panic]
+        fn undefined() {
+            let code = "
+                print(x);
+                ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+        }
+    }
+    mod block {
+        use crate::{environment::Environment, parser::test::get_parser};
+
+        #[test]
+        fn basic() {
+            let code = "
+{
+    var x = 2;
+    print x;
+}
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+
+            assert_eq!(buffer, b"5\ntrue\n10\n")
         }
     }
 }

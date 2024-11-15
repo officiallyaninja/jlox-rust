@@ -51,7 +51,7 @@ fn main() {
             let mut parser = parser::Parser::new(tokens);
             let program = parser.parse();
             for statement in program {
-                statement.execute(&mut environment);
+                statement.execute(&mut environment, &mut std::io::stdout());
             }
             buffer.clear();
         }
@@ -105,7 +105,7 @@ fn main() {
             let mut parser = parser::Parser::new(tokens);
             let program = parser.parse();
             for statement in program {
-                statement.execute(&mut environment);
+                statement.execute(&mut environment, &mut std::io::stdout());
             }
         }
 

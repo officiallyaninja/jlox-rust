@@ -147,13 +147,12 @@ impl Expr {
             }
             // TODO: turn into a runtime error
             Expr::Variable(name) => environment
-                .variables
                 .get(&name)
                 .expect("Variable not defined")
                 .clone(),
             Expr::Assign { name, value } => {
                 let value = value.evaluate(environment);
-                let Some(_) = environment.variables.insert(name.clone(), value.clone()) else {
+                let Some(_) = environment.insert(name.clone(), value.clone()) else {
                     panic!("undefined variable \"{}\"", name);
                 };
                 value
