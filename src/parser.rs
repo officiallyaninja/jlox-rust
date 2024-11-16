@@ -268,6 +268,11 @@ mod test {
         Parser::new(tokens)
     }
 
+    fn utf8_to_string(buffer: &[u8]) -> &str {
+        std::str::from_utf8(&buffer)
+            .expect("comes from a valid string, so it should be a valid string")
+    }
+
     mod expressions {
         use crate::parser::test::get_parser;
         #[test]
@@ -369,7 +374,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment, &mut buffer);
+                environment = statement.execute(environment, &mut buffer);
             }
 
             assert_eq!(buffer, b"7\n");
@@ -385,7 +390,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment, &mut buffer);
+                environment = statement.execute(environment, &mut buffer);
             }
 
             assert_eq!(buffer, b"12\n")
@@ -401,7 +406,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment, &mut buffer);
+                environment = statement.execute(environment, &mut buffer);
             }
 
             assert_eq!(buffer, b"7\n")
@@ -422,7 +427,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment, &mut buffer);
+                environment = statement.execute(environment, &mut buffer);
             }
 
             assert_eq!(buffer, b"5\ntrue\n10\n")
@@ -445,7 +450,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment, &mut buffer);
+                environment = statement.execute(environment, &mut buffer);
             }
         }
 
@@ -460,12 +465,15 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment, &mut buffer);
+                environment = statement.execute(environment, &mut buffer);
             }
         }
     }
     mod block {
-        use crate::{environment::Environment, parser::test::get_parser};
+        use crate::{
+            environment::Environment,
+            parser::test::{get_parser, utf8_to_string},
+        };
 
         #[test]
         fn basic() {
@@ -480,10 +488,50 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                statement.execute(&mut environment, &mut buffer);
+                environment = statement.execute(environment, &mut buffer);
             }
 
-            assert_eq!(buffer, b"5\ntrue\n10\n")
+            assert_eq!(utf8_to_string(&buffer), "2\n")
+        }
+
+        #[test]
+        fn nested() {
+            let code = "
+            var a = \"global a\";
+            var b = \"global b\";
+            var c = \"global c\";
+            {
+                var a = \"outer a\";
+                var b = \"outer b\";
+                {
+                    var a = \"inner a\";
+                    print a;
+                    print b;
+                    print c;
+                }
+                print a;
+                print b;
+                print c;
+            }
+            print a;
+            print b;
+            print c;
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                environment = statement.execute(environment, &mut buffer);
+            }
+            let output = vec![
+                "inner a", "outer b", "global c", //
+                "outer a", "outer b", "global c", //
+                "global a", "global b", "global c", //
+            ];
+            let mut output = output.join("\n");
+            output.push('\n');
+            assert_eq!(utf8_to_string(&buffer), output)
         }
     }
 }

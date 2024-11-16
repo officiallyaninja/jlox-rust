@@ -1,6 +1,5 @@
-use crate::environment::Environment;
-
 use super::expression::Expr;
+use crate::environment::Environment;
 
 #[derive(Debug)]
 pub enum Stmt {
@@ -17,25 +16,33 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    pub fn execute<W: std::io::Write>(self, environment: &mut Environment, output: &mut W) {
+    pub fn execute<W: std::io::Write>(self, mut env: Environment, output: &mut W) -> Environment {
         match self {
             Stmt::Print(expr) => {
-                let text = expr.evaluate(environment).to_string();
+                let text = expr.evaluate(&mut env).to_string();
                 output
                     .write(text.as_bytes())
                     .and_then(|_| output.write(b"\n"))
                     .expect("Write Error");
             }
             Stmt::Expression(expr) => {
-                expr.evaluate(environment);
+                expr.evaluate(&mut env);
             }
             Stmt::Var(name, value) => {
-                let value = value.evaluate(environment);
-                environment.insert(name, value);
+                let value = value.evaluate(&mut env);
+                // idk if we need to do anything on redefinition
+                &mut env.insert(name, value);
             }
-            Stmt::Block(_) => {
-                let env = Environment::with_parent(environment);
+            Stmt::Block(statements) => {
+                let mut env = Environment::with_parent(env);
+                for statement in statements {
+                    env = statement.execute(env, output);
+                }
+                return env
+                    .parent()
+                    .expect("we gave it a parent, so we know it must have one");
             }
         };
+        env
     }
 }

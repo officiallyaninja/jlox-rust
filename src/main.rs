@@ -33,7 +33,7 @@ impl Context {
 
 fn main() {
     let mut context = Context::new();
-    let mut environment = Environment::new();
+    let mut env = Environment::new();
     let args: Vec<String> = env::args().collect();
 
     // REPL
@@ -51,7 +51,7 @@ fn main() {
             let mut parser = parser::Parser::new(tokens);
             let program = parser.parse();
             for statement in program {
-                statement.execute(&mut environment, &mut std::io::stdout());
+                env = statement.execute(env, &mut std::io::stdout());
             }
             buffer.clear();
         }
@@ -96,7 +96,7 @@ fn main() {
             context.print_errors();
             let mut parser = parser::Parser::new(tokens);
             let parsed = parser.expression();
-            println!("{}", parsed.evaluate(&mut environment))
+            println!("{}", parsed.evaluate(&mut env))
         }
 
         "run" => {
@@ -105,7 +105,7 @@ fn main() {
             let mut parser = parser::Parser::new(tokens);
             let program = parser.parse();
             for statement in program {
-                statement.execute(&mut environment, &mut std::io::stdout());
+                env = statement.execute(env, &mut std::io::stdout());
             }
         }
 
