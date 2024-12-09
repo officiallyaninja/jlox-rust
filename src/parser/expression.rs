@@ -16,6 +16,12 @@ pub enum Expr {
         op: Token,
         right: Box<Expr>,
     },
+    Logical {
+        left: Box<Expr>,
+        // Change to type Logical operator
+        op: Token,
+        right: Box<Expr>,
+    },
     // This(Token),
     Variable(String),
     Assign {
@@ -68,6 +74,7 @@ impl Expr {
             ),
             Expr::Variable(name) => name.clone(),
             Expr::Assign { name, value } => format!("{name} = {}", value.to_string_normal()),
+            Expr::Logical { left, op, right } => todo!(),
         }
     }
     pub fn pretty_string(&self) -> String {
@@ -83,9 +90,10 @@ impl Expr {
             ),
             Expr::Variable(_) => todo!(),
             Expr::Assign { name, value } => todo!(),
+            Expr::Logical { left, op, right } => todo!(),
         }
     }
-    pub fn evaluate(self, environment: &mut Environment) -> Literal {
+    pub fn evaluate(&self, environment: &mut Environment) -> Literal {
         match self {
             Expr::Grouping(expr) => expr.evaluate(environment),
             Expr::Literal(literal) => literal,
@@ -130,20 +138,43 @@ impl Expr {
                             panic!("invalid operation {} on strings", op.token_type())
                         }
                     },
+
                     (left, right) => match op {
                         Token::EqualEqual => left == right,
                         Token::BangEqual => left != right,
                         op => {
                             panic!(
                                 "invalid operation {} on {} and {}",
-                                left.to_string(),
                                 op.token_type(),
+                                left.to_string(),
                                 right.to_string()
                             )
                         }
                     }
                     .into(),
                 }
+            }
+            Expr::Logical { left, op, right } => {
+                let left = left.evaluate(environment);
+                match op {
+                    Token::Or => {
+                        if left.truthy() {
+                            return left;
+                        }
+                    }
+                    Token::And => {
+                        if !left.truthy() {
+                            return left;
+                        }
+                    }
+                    op => {
+                        panic!(
+                            "invalid operation {}, expected logical operation (and/or)",
+                            op.token_type(),
+                        )
+                    }
+                }
+                right.evaluate(environment)
             }
             // TODO: turn into a runtime error
             Expr::Variable(name) => environment

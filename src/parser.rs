@@ -19,22 +19,29 @@ where
     T: Iterator<Item = Token>,
 {
     fn syntax_error(&self, message: &str) -> ! {
+        // TODO: print the line
         panic!("[line {}] Error: {}", self.line, message);
     }
 
-    fn check_semicolon(&mut self) {
-        let Token::SemiColon = self
-            .tokens
-            .next()
-            .expect("every statement should end in a semicolon")
-        else {
-            self.syntax_error("every statement should end in a semicolon")
-        };
+    fn assert_next_token(&mut self, token: Token) {
+        let next_token = self.tokens.next();
+        match next_token {
+            Some(found) if found == token => {}
+            Some(found) if found != token => self.syntax_error(&format!(
+                "expected '{}' ({}), found '{}' ({})",
+                token.lexeme(),
+                token.token_type(),
+                found.lexeme(),
+                found.token_type()
+            )),
+            None => self.syntax_error(&format!(
+                "expected '{}' ({}), found EOF",
+                token.lexeme(),
+                token.token_type(),
+            )),
+            _ => unreachable!(),
+        }
     }
-    // fn runtime_error(&self, message: &str) -> ! {
-    //     panic!("[line {}] Error: {}", self.line, message);
-    // }
-
     pub fn new<U: IntoIterator<IntoIter = T>>(tokens: U) -> Self {
         Self {
             tokens: tokens.into_iter().peekable(),
@@ -57,88 +64,102 @@ where
         } else {
             self.non_declaration_statement()
         };
-        match stmt {
-            Stmt::Block(_) => {}
-            Stmt::Expression(_) | Stmt::Print(_) | Stmt::Var(_, _) => self.check_semicolon(),
-        }
-        // Removing extraneous semicolons
-        while let Some(Token::SemiColon) = self.tokens.peek() {
-            self.tokens.next();
-        }
+
         self.line += 1;
         stmt
     }
 
     fn declaration_statement(&mut self) -> Stmt {
-        let Some(Token::Var) = self.tokens.next() else {
-            unreachable!("function should only be called if next is Token::Var")
+        self.assert_next_token(Token::Var);
+
+        let Some(Token::Identifier(name)) = self.tokens.next() else {
+            panic!("Var should be followed by an identifier");
         };
 
-        let Token::Identifier(name) = self
-            .tokens
-            .next()
-            .expect("Var should be followed by identifier")
-        else {
-            panic!("Var should be followed by identifier");
+        let initializer = if self.tokens.next_if_eq(&Token::Equal).is_some() {
+            self.expression()
+        } else {
+            Literal::Nil.into()
         };
 
-        if let Token::Equal = self
-            .tokens
-            .peek()
-            .expect("next token should either be semicolon or equal")
-        {
-            self.tokens
-                .next()
-                .expect("throwing away the equals we know exists here");
-            return Stmt::Var(name, self.expression());
-        }
-
-        Stmt::Var(name, Literal::Nil.into())
+        self.assert_next_token(Token::SemiColon);
+        return Stmt::Var(name, initializer);
     }
 
     /// We use this because some places where we accept statements
     /// we only really allow non declaration statements
     fn non_declaration_statement(&mut self) -> Stmt {
-        if let Some(Token::Print) = self.tokens.peek() {
-            return self.print_statement();
+        match self
+            .tokens
+            .peek()
+            .expect("statement function should not be called on empty tokenstream")
+        {
+            Token::If => self.if_statement(),
+            Token::Print => self.print_statement(),
+            Token::While => self.while_statement(),
+            Token::LeftBrace => self.block(),
+            _ => self.expression_statement(),
         }
-        if let Some(Token::LeftBrace) = self.tokens.peek() {
-            return Stmt::Block(self.block());
-        }
-        self.expression_statement()
     }
 
-    fn block(&mut self) -> Vec<Stmt> {
-        assert_eq!(self.tokens.next(), Some(Token::LeftBrace));
+    fn while_statement(&mut self) -> Stmt {
+        self.assert_next_token(Token::While);
+        self.assert_next_token(Token::LeftParen);
+        let condition = self.expression();
+        self.assert_next_token(Token::RightParen);
+
+        let body = self.statement();
+        Stmt::While(condition, body.into())
+    }
+
+    fn if_statement(&mut self) -> Stmt {
+        self.assert_next_token(Token::If);
+        self.assert_next_token(Token::LeftParen);
+        let condition = self.expression();
+        self.assert_next_token(Token::RightParen);
+
+        let then_stmt = self.statement().into();
+        let else_stmt = if self.tokens.next_if_eq(&Token::Else).is_some() {
+            Some(self.statement().into())
+        } else {
+            None
+        };
+        Stmt::If {
+            condition,
+            then_stmt,
+            else_stmt,
+        }
+    }
+    fn block(&mut self) -> Stmt {
+        self.assert_next_token(Token::LeftBrace);
         let mut statements = vec![];
         while self.tokens.peek().is_some() && self.tokens.peek() != Some(&Token::RightBrace) {
             statements.push(self.statement())
         }
-        assert_eq!(self.tokens.next(), Some(Token::RightBrace));
-        statements
+        self.assert_next_token(Token::RightBrace);
+        Stmt::Block(statements)
     }
 
     fn print_statement(&mut self) -> Stmt {
-        let Some(Token::Print) = self.tokens.next() else {
-            unreachable!("function should only be called if next is Token::Print")
-        };
-        Stmt::Print(self.expression())
+        self.assert_next_token(Token::Print);
+        let stmt = Stmt::Print(self.expression());
+        self.assert_next_token(Token::SemiColon);
+        stmt
     }
 
     fn expression_statement(&mut self) -> Stmt {
-        Stmt::Expression(self.expression())
+        let stmt = Stmt::Expression(self.expression());
+        self.assert_next_token(Token::SemiColon);
+        stmt
     }
 
-    // TODO: Find a way to make this private
-    // if that's even desirable
-    // (which I think it is but idk)
     pub fn expression(&mut self) -> Expr {
         self.assignment()
     }
 
     fn assignment(&mut self) -> Expr {
-        let expr = self.equality();
-        if let Some(_) = self.tokens.next_if_eq(&Token::Equal) {
+        let expr = self.or();
+        if self.tokens.next_if_eq(&Token::Equal).is_some() {
             let value = self.assignment();
             if let Expr::Variable(name) = expr {
                 return Expr::Assign {
@@ -151,6 +172,33 @@ where
         }
         expr
     }
+
+    fn or(&mut self) -> Expr {
+        let mut expr = self.and();
+        while let Some(op) = self.tokens.next_if(|t| t == &Token::Or) {
+            let right = self.and();
+            expr = Expr::Logical {
+                left: expr.into(),
+                op,
+                right: right.into(),
+            };
+        }
+        expr
+    }
+
+    fn and(&mut self) -> Expr {
+        let mut expr = self.equality();
+        while let Some(op) = self.tokens.next_if(|t| t == &Token::And) {
+            let right = self.equality();
+            expr = Expr::Logical {
+                left: expr.into(),
+                op,
+                right: right.into(),
+            };
+        }
+        expr
+    }
+
     fn equality(&mut self) -> Expr {
         use Token::*;
         let mut result = self.comparison();
@@ -229,19 +277,16 @@ where
             Token::True => Literal::True,
             Token::False => Literal::False,
             Token::Nil => Literal::Nil,
-            Token::Number(name, value) => Literal::Number(value),
+            Token::Number(_, value) => Literal::Number(value),
             Token::String(value) => Literal::String(value),
             Token::LeftParen => {
                 let expr = self.expression();
-                let Token::RightParen = self.tokens.next().unwrap() else {
-                    self.syntax_error("missing right paren");
-                };
+                self.assert_next_token(Token::RightParen);
                 return Expr::Grouping(expr.into());
             }
             Token::Identifier(name) => {
                 return Expr::Variable(name);
             }
-            //TODO: better error message
             invalid => self.syntax_error(&format!(
                 "invalid primary token found {}",
                 invalid.token_type()
@@ -268,9 +313,11 @@ mod test {
         Parser::new(tokens)
     }
 
-    fn utf8_to_string(buffer: &[u8]) -> &str {
+    fn utf8_to_string(buffer: &[u8]) -> Vec<&str> {
         std::str::from_utf8(&buffer)
             .expect("comes from a valid string, so it should be a valid string")
+            .split('\n')
+            .collect()
     }
 
     mod expressions {
@@ -374,7 +421,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                environment = statement.execute(environment, &mut buffer);
+                statement.execute(&mut environment, &mut buffer);
             }
 
             assert_eq!(buffer, b"7\n");
@@ -390,7 +437,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                environment = statement.execute(environment, &mut buffer);
+                statement.execute(&mut environment, &mut buffer);
             }
 
             assert_eq!(buffer, b"12\n")
@@ -406,7 +453,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                environment = statement.execute(environment, &mut buffer);
+                statement.execute(&mut environment, &mut buffer);
             }
 
             assert_eq!(buffer, b"7\n")
@@ -427,7 +474,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                environment = statement.execute(environment, &mut buffer);
+                statement.execute(&mut environment, &mut buffer);
             }
 
             assert_eq!(buffer, b"5\ntrue\n10\n")
@@ -450,7 +497,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                environment = statement.execute(environment, &mut buffer);
+                statement.execute(&mut environment, &mut buffer);
             }
         }
 
@@ -465,7 +512,7 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                environment = statement.execute(environment, &mut buffer);
+                statement.execute(&mut environment, &mut buffer);
             }
         }
     }
@@ -488,10 +535,10 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                environment = statement.execute(environment, &mut buffer);
+                statement.execute(&mut environment, &mut buffer);
             }
 
-            assert_eq!(utf8_to_string(&buffer), "2\n")
+            assert_eq!(utf8_to_string(&buffer), vec!["2", ""])
         }
 
         #[test]
@@ -522,15 +569,192 @@ mod test {
             let program = get_parser(code).parse();
             let mut buffer = Vec::<u8>::new();
             for statement in program {
-                environment = statement.execute(environment, &mut buffer);
+                statement.execute(&mut environment, &mut buffer);
             }
             let output = vec![
                 "inner a", "outer b", "global c", //
                 "outer a", "outer b", "global c", //
                 "global a", "global b", "global c", //
+                "",
             ];
-            let mut output = output.join("\n");
-            output.push('\n');
+            assert_eq!(utf8_to_string(&buffer), output)
+        }
+    }
+
+    mod control_flow {
+        use crate::{
+            environment::Environment,
+            parser::test::{get_parser, utf8_to_string},
+        };
+
+        #[test]
+        fn outputs() {
+            let code = "
+                print true or true;
+                print true or false;
+                print false or true;
+                print false or false;
+                print true and true;
+                print true and false;
+                print false and true;
+                print false and false;
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+
+            let output = vec![
+                "true", "true", "true", "false", "true", "false", "false", "false", "",
+            ];
+            assert_eq!(utf8_to_string(&buffer), output)
+        }
+
+        #[test]
+        fn short_circuiting() {
+            let code = "
+                print \"hi\" or 2; 
+                print nil or \"yes\"; 
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+
+            let output = vec!["hi", "yes", ""];
+            assert_eq!(utf8_to_string(&buffer), output)
+        }
+
+        #[test]
+        fn just_if() {
+            let code = "
+                if (true) {
+                print \"true\";
+                }
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+
+            let output = vec!["true", ""];
+            assert_eq!(utf8_to_string(&buffer), output)
+        }
+        #[test]
+        fn if_then_else() {
+            let code = "
+                if (true) {
+                print \"true\";
+                } else {
+                print \"false\"; 
+                }
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+
+            let output = vec!["true", ""];
+            assert_eq!(utf8_to_string(&buffer), output)
+        }
+
+        #[test]
+        fn if_then_else_alt() {
+            let code = "
+                if (false) {
+                print \"true\";
+                } else {
+                print \"false\"; 
+                }
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+
+            let output = vec!["false", ""];
+            assert_eq!(utf8_to_string(&buffer), output)
+        }
+
+        #[test]
+        fn if_then_else_no_brackets() {
+            let code = "
+                if (true) 
+                print \"true\";
+                 else 
+                print \"false\"; 
+                
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+
+            let output = vec!["true", ""];
+            assert_eq!(utf8_to_string(&buffer), output)
+        }
+
+        #[test]
+        fn nested() {
+            let code = "
+                if (true) 
+                    if (false)
+                        print \"true then false\";
+                     else 
+                        print \"true then true\";
+                else
+                    print \"unreachable\"; 
+                
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+
+            let output = vec!["true then true", ""];
+            assert_eq!(utf8_to_string(&buffer), output)
+        }
+
+        #[test]
+        fn while_loop() {
+            let code = "
+                  var i = 0;
+                  while (i < 10) {
+                    print i;
+                    i = i + 1;
+                  }
+                
+            ";
+            let mut environment = Environment::new();
+
+            let program = get_parser(code).parse();
+            let mut buffer = Vec::<u8>::new();
+            for statement in program {
+                statement.execute(&mut environment, &mut buffer);
+            }
+
+            let output = vec!["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ""];
             assert_eq!(utf8_to_string(&buffer), output)
         }
     }

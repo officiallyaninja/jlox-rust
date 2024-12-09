@@ -8,41 +8,55 @@ pub enum Stmt {
     Expression(Expr),
     // Function definition
     // Function(Token, Vec<Token>, Vec<Stmt>),
-    // If(Expr, Box<Stmt>, Box<Stmt>),
+    If {
+        condition: Expr,
+        then_stmt: Box<Stmt>,
+        else_stmt: Option<Box<Stmt>>,
+    },
     Print(Expr),
     // Return(Token, Expr),
     Var(String, Expr),
-    // While(Expr, Box<Stmt>),
+    While(Expr, Box<Stmt>),
 }
 
 impl Stmt {
-    pub fn execute<W: std::io::Write>(self, mut env: Environment, output: &mut W) -> Environment {
+    pub fn execute<W: std::io::Write>(self, env: &mut Environment<'_>, output: &mut W) {
         match self {
             Stmt::Print(expr) => {
-                let text = expr.evaluate(&mut env).to_string();
+                let text = expr.evaluate(env).to_string();
                 output
                     .write(text.as_bytes())
                     .and_then(|_| output.write(b"\n"))
                     .expect("Write Error");
             }
             Stmt::Expression(expr) => {
-                expr.evaluate(&mut env);
+                expr.evaluate(env);
             }
             Stmt::Var(name, value) => {
-                let value = value.evaluate(&mut env);
+                let value = value.evaluate(env);
                 // idk if we need to do anything on redefinition
-                &mut env.insert(name, value);
+                env.insert(name, value);
             }
             Stmt::Block(statements) => {
                 let mut env = Environment::with_parent(env);
                 for statement in statements {
-                    env = statement.execute(env, output);
+                    statement.execute(&mut env, output);
                 }
-                return env
-                    .parent()
-                    .expect("we gave it a parent, so we know it must have one");
+            }
+            Stmt::If {
+                condition,
+                then_stmt,
+                else_stmt,
+            } => match (condition.evaluate(env).truthy(), else_stmt) {
+                (true, _) => then_stmt.execute(env, output),
+                (false, Some(else_stmt)) => else_stmt.execute(env, output),
+                (false, None) => {}
+            },
+            Stmt::While(condition, body) => {
+                while condition.evaluate(env).truthy() {
+                    //body.execute(env, output)
+                }
             }
         };
-        env
     }
 }

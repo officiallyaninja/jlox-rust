@@ -2,17 +2,17 @@ use crate::literal::Literal;
 use std::collections::HashMap;
 
 #[derive(Default)]
-pub struct Environment {
+pub struct Environment<'p> {
     variables: HashMap<String, Literal>,
-    parent: Option<Box<Environment>>,
+    parent: Option<&'p Environment<'p>>,
 }
-impl Environment {
+impl<'p> Environment<'p> {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn with_parent(env: Environment) -> Self {
+    pub fn with_parent(env: &'p Environment) -> Environment<'p> {
         Self {
-            parent: Some(Box::new(env)),
+            parent: Some(env),
             ..Self::default()
         }
     }
