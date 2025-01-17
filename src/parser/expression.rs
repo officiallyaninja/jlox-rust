@@ -96,7 +96,7 @@ impl Expr {
     pub fn evaluate(&self, environment: &mut Environment) -> Literal {
         match self {
             Expr::Grouping(expr) => expr.evaluate(environment),
-            Expr::Literal(literal) => literal,
+            Expr::Literal(literal) => literal.clone(),
             Expr::Unary { op, expr } => match op {
                 Token::Bang => (!expr.evaluate(environment).truthy()).into(),
                 Token::Minus => {
@@ -183,9 +183,10 @@ impl Expr {
                 .clone(),
             Expr::Assign { name, value } => {
                 let value = value.evaluate(environment);
-                let Some(_) = environment.insert(name.clone(), value.clone()) else {
+                let Some(var) = environment.get_mut(name) else {
                     panic!("undefined variable \"{}\"", name);
                 };
+                *var = value.clone();
                 value
             }
         }

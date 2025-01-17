@@ -20,7 +20,7 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    pub fn execute<W: std::io::Write>(self, env: &mut Environment<'_>, output: &mut W) {
+    pub fn execute<W: std::io::Write>(&self, env: &mut Environment, output: &mut W) {
         match self {
             Stmt::Print(expr) => {
                 let text = expr.evaluate(env).to_string();
@@ -35,13 +35,14 @@ impl Stmt {
             Stmt::Var(name, value) => {
                 let value = value.evaluate(env);
                 // idk if we need to do anything on redefinition
-                env.insert(name, value);
+                env.insert(name.to_string(), value);
             }
             Stmt::Block(statements) => {
-                let mut env = Environment::with_parent(env);
+                env.push_scope();
                 for statement in statements {
-                    statement.execute(&mut env, output);
+                    statement.execute(env, output);
                 }
+                env.pop_scope();
             }
             Stmt::If {
                 condition,
@@ -54,7 +55,7 @@ impl Stmt {
             },
             Stmt::While(condition, body) => {
                 while condition.evaluate(env).truthy() {
-                    //body.execute(env, output)
+                    body.execute(env, output)
                 }
             }
         };

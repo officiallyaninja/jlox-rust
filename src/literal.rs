@@ -3,6 +3,7 @@ use std::fmt::Display;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     Number(f64),
+    // TODO: make strings faster
     String(String),
     True,
     False,
