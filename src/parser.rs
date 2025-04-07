@@ -1,5 +1,7 @@
 mod expression;
 mod statement;
+#[cfg(test)]
+mod test;
 
 use self::{expression::Expr, statement::Stmt};
 use crate::{literal::Literal, scanner::Token};

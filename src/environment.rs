@@ -1,5 +1,5 @@
 use crate::literal::Literal;
-use std::{collections::HashMap, env::vars_os};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Environment {

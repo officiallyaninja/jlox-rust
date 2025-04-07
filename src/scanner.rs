@@ -247,7 +247,7 @@ pub fn tokenize(input: &str, ctx: &mut Context) -> Vec<Token> {
                 continue;
             }
             num if num.is_digit(10) => {
-                let mut encountered_decimal = false;
+                let mut encountered_decimal_point = false;
                 let mut as_string = num.to_string();
                 while let Some(next) = chars.peek() {
                     if !next.is_digit(10) {
@@ -255,10 +255,10 @@ pub fn tokenize(input: &str, ctx: &mut Context) -> Vec<Token> {
                             break;
                         }
                         // next == '.'
-                        if encountered_decimal {
+                        if encountered_decimal_point {
                             break;
                         }
-                        encountered_decimal = true;
+                        encountered_decimal_point = true;
                     }
 
                     as_string.push(
